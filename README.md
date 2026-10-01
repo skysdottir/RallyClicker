@@ -11,7 +11,7 @@ As is traditional with rally, the number seqence starts with the advance car, th
 
 When the clicker starts, the clock will be all red Xes and the knob will do nothing- this is normal while waiting for GPS.
 
-Once GPS time is synced, the clock will update to real time (currently hard-coded to UTC-7 time zone, that's a todo), and the knob will begin to function:
+Once GPS time is synced, the clock will update to real time (in the configured time zone), and the knob will begin to function:
 
 **Clicking the knob** will record an entry to the log
 
