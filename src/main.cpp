@@ -116,6 +116,7 @@ void displayTime() {
 
 void displayCarnum(int idx, int num, int y) {
     tft.setTextSize(2);
+
     if (idx == -1) {
         if (editing_carnum && millis() % 1000 < 500) {
             tft.setTextColor(0x4208, ST77XX_BLACK);
@@ -173,12 +174,36 @@ void displayEntry(int draw_idx) {
     printNum(minute(times[buf_idx]));
 }
 
-void displayLog() {
+void displayWaitingForGps() {
     tft.drawLine(0, 28, 135, 28, ST77XX_WHITE);
+    tft.setTextColor(ST77XX_WHITE, ST77XX_BLACK);
+    tft.setTextSize(2);
+    tft.setCursor(28, 52);
+    tft.print("waiting");
+    tft.setCursor(44, 72);
+    tft.print("for");
+    tft.setCursor(44, 92);
+    tft.print("GPS");
+    tft.setCursor(40, 112);
+    tft.print("time");
+    tft.setCursor(40, 132);
+    tft.print("sync");
+}
 
+void clearLog() {
+    tft.drawLine(0, 28, 135, 28, ST77XX_WHITE);
+    tft.fillRect(0, 29, 135, 240, ST77XX_BLACK);
+}
+
+void displayNextCar() {
+    tft.drawLine(0, 28, 135, 28, ST77XX_WHITE);
     displayCarnum(-1, nextcar, 32);
+}
 
-    // and draw the log. 10 here is the number of lines to display.
+void displayLog() {
+    tft.setTextSize(2);
+
+    // draw the log. 10 here is the number of lines to display.
     for(int i = 0; (i < 10); i++) {
         displayEntry(i);
     }
@@ -236,13 +261,17 @@ void setup(void) {
     attachInterrupt(digitalPinToInterrupt(GPS_PPS_PIN), onGpsPPS, RISING);
 
     displayTime();
-    displayLog();
+    displayWaitingForGps();
 }
 
 long gps_lastbit = 0;
 long gps_lastframe = 0;
 
 void loop() {
+    bool proc_next_redraw = false;
+    bool proc_log_redraw = false;
+    bool proc_log_clear = false;
+
     long t = millis();
     while(Serial2.available() > 0) {
         int buf = Serial2.read();
@@ -281,13 +310,16 @@ void loop() {
                     gps.date.month(), 
                     gps.date.year());
 
+            if (!time_sync_good) {
+                proc_log_clear = true;
+                proc_next_redraw = true;
+            }
+
             time_sync_good = true;
         }
 
         proc_time_sync = false;
     }
-
-    bool proc_redraw = false;
 
     encoder.update();
 
@@ -296,20 +328,20 @@ void loop() {
     if (delta > 0 && time_sync_good) {
         if (editing_carnum) {
             nextcar++;
-            proc_redraw = true;
+            proc_next_redraw = true;
         } else if (scroll_offset > 0) {
             scroll_offset--;
-            proc_redraw = true;
+            proc_log_redraw = true;
         }
     }
 
     if (delta < 0 && time_sync_good) {
         if (editing_carnum && nextcar > -3) {
             nextcar--;
-            proc_redraw = true;
+            proc_next_redraw = true;
         } else if (scroll_offset < logged-5) {
             scroll_offset++;
-            proc_redraw = true;
+            proc_log_redraw = true;
         }
     }
 
@@ -322,21 +354,31 @@ void loop() {
             logged++;
             nextcar++;
             scroll_offset = 0;
-            proc_redraw = true;
+            proc_next_redraw = true;
+            proc_log_redraw = true;
         } else {
             editing_carnum = false;
-            proc_redraw = true;
+            proc_next_redraw = true;
         }
     }
 
     if (encoder.longPress() && time_sync_good) {
         editing_carnum = !editing_carnum;
-        proc_redraw = true;
+        proc_next_redraw = true;
     }
 
+    // displayTime does its own deduplication, no need to switch it
     displayTime();
 
-    if (proc_redraw) {
+    if (proc_log_clear) {
+        clearLog();
+    }
+
+    if (proc_next_redraw) {
+        displayNextCar();
+    }
+
+    if (proc_log_redraw) {
         displayLog();
     }
 

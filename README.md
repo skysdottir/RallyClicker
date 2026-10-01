@@ -51,6 +51,8 @@ RallyClicker is a PlatformIO project, developed in VS Code. That'll be by far th
 
 In traditional arduino fashion, everything is mashed into main.cpp, with RotaryEncoder .cpp and .h hanging out (instead of properly imported) because I needed to fix a bug.
 
+SPI TFTs are slow and drawing blocks encoder I/O: minimizing redraws is important.
+
 ## Acknowledgements
 
 This project would not exist without the open source community
