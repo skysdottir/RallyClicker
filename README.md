@@ -18,6 +18,10 @@ Once GPS time is synced, the clock will update to real time (currently hard-code
 **Long-pressing the knob** will enter number-selection mode. The blue *next* number will blink
 **While in number-selection-mode** twisting the knob will adjust the *next* number. Clicking or long-pressing the knob will return to log mode but not log an entry.
 
+**Long-pressing the menu button** will enter the menu, for time zone adjustment
+**Pressing the menu button again** will exit the menu
+**The knob** will navigate and manipulate the menu. Click on an entry to adjust it, click again to back out to navigation.
+
 *Note that this library currently only stores the log in memory - turning it off and then on again wil loose the current log!*
 
 ## Hardware needed
