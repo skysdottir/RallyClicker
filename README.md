@@ -14,12 +14,17 @@ When the clicker starts, the clock will be all red Xes and the knob will do noth
 Once GPS time is synced, the clock will update to real time (currently hard-coded to UTC-7 time zone, that's a todo), and the knob will begin to function:
 
 **Clicking the knob** will record an entry to the log
+
 **Twisting the knob** will scroll up or down the log. Clicking while scrolled down will still record to the top of the log, and scroll back up to the top - no need to worry about messing up the order
+
 **Long-pressing the knob** will enter number-selection mode. The blue *next* number will blink
+
 **While in number-selection-mode** twisting the knob will adjust the *next* number. Clicking or long-pressing the knob will return to log mode but not log an entry.
 
 **Long-pressing the menu button** will enter the menu, for time zone adjustment
+
 **Pressing the menu button again** will exit the menu
+
 **The knob** will navigate and manipulate the menu. Click on an entry to adjust it, click again to back out to navigation.
 
 *Note that this library currently only stores the log in memory - turning it off and then on again wil loose the current log!*
