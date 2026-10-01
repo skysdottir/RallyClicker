@@ -1,9 +1,11 @@
 #include <Adafruit_GFX.h>
 #include <Adafruit_ST7789.h>
+#include <Adafruit_LittleFS.h>
+#include <InternalFileSystem.h>
 #include <Arduino.h>
 #include <TinyGPSPlus.h>
 #include <TimeLib.h>
-#include "RotaryEncoder.h"
+#include <RotaryEncoder.h>
 
 /* ADC */
 #define SOC_GPIO_PIN_T114_ADC_EN 6 // P0.06
@@ -23,10 +25,11 @@
 #define SOC_GPIO_PIN_T114_TFT_EN    3 // P0.03
 #define SOC_GPIO_PIN_T114_TFT_BLGT  15 // P0.15
 
-/* clicker wheel */
+/* inputs */
 #define CLICK_PIN 28
 #define SCROLL_DIR_PIN 30
 #define SCROLL_TRIGGER_PIN 29
+#define MENU_BUTTON_PIN 42
 
 /* GPS PPS pin - gotta get those micros*/
 #define GPS_PPS_PIN 36
@@ -34,27 +37,44 @@
 /* GPS */
 #define GPSBAUD 9600
 
+/* File system */
+#define CONFIG_FILE_NAME "/rallyclick/config.txt"
+#define LOG_FILE_NAME "/rallyclick/log.txt"
+
 /* Magic numbers */
-#define BUF_SIZE 1024
+#define BUF_SIZE 1024 // An event is never going to have more than 1024 cars, right?
+
+// don't do this
+#define TIME_ZONE_COUNT 38
+int timezones[] = {-1200, -1100, -1000, -930, -900, -800, -700, -600, -500, -400, -330, -300, -200, -100, 0, 100, 200, 300, 330, 400, 430, 500, 530, 545, 600, 630, 700, 800, 845, 900, 930, 1000, 1030, 1100, 1200, 1245, 1300, 1400};
+int timezone = -700;
+int time_zone_index = 6;
 
 TinyGPSPlus gps;
 Adafruit_ST7789 tft(&SPI1, SOC_GPIO_PIN_T114_TFT_SS, SOC_GPIO_PIN_T114_TFT_DC, SOC_GPIO_PIN_T114_TFT_RST);
 RotaryEncoder encoder(SCROLL_TRIGGER_PIN, SCROLL_DIR_PIN, CLICK_PIN);
 
-int lasthr = -1;
-int lastmin = -1;
-int lastsec = -1;
+// GPS ISR flags
+volatile bool proc_time_sync = false;  // T when gps pps pulse arrives, F on next loop()
+volatile bool next_second = false;     // T when gps pps pulse arrives, F when gps serial second advances
 
-volatile bool proc_time_sync = false;
-volatile bool next_second = false;
-long last_gps_second = -1; // records the millisecond we last ticked over a 1s divide, per GPS PPS
-
+// main state switches
+bool time_sync_good = false;
 bool editing_carnum = false;
+bool in_menu = false;
+bool editing_menu_item = false;
+bool just_toggled_menu_state = true;
 
-int nextcar = -3;
+int nextcar = -3; // -3: ADV  -2: 000  -1: 00
 int logged = 0;
 int scroll_offset = 0;
 
+// Menu button debounce
+long last_menu_off = 0;
+int menu_index = 0;
+#define MENU_ITEM_COUNT 1
+
+// the in-memory log store
 int cars[BUF_SIZE];
 long times[BUF_SIZE];
 
@@ -66,7 +86,17 @@ void printNum(int num) {
     tft.print(num);
 }
 
-bool time_sync_good = false;
+int lasthr = -1;
+int lastmin = -1;
+int lastsec = -1;
+
+// fortunately we only care about hours and minutes. Days can be wrong, they aren't displayed
+time_t toTimeZone(time_t t) {
+    unsigned long magic = (unsigned long) t;
+    magic += (timezone % 100) * 60;
+    magic += (timezone / 100) * 3600;
+    return (time_t) magic;
+}
 
 void displayTime() {
     tft.setTextSize(3); // set text size
@@ -77,7 +107,9 @@ void displayTime() {
     // font size 3: 18x24, 3 px padding
 
     if (time_sync_good) {
-        time_t t = now();
+
+        // now() should return UTC time
+        time_t t = toTimeZone(now());
 
         int t_hour = hour(t);
         int t_minute = minute(t);
@@ -107,10 +139,10 @@ void displayTime() {
         
     } else {
         tft.setTextColor(ST77XX_RED, ST77XX_BLACK);
-        tft.printf("XX:XX");
+        tft.print("XX:XX");
         tft.setTextSize(2);
         tft.setCursor(tft.getCursorX(), 6);
-        tft.printf(":XX");
+        tft.print(":XX");
     }
 }
 
@@ -168,10 +200,12 @@ void displayEntry(int draw_idx) {
 
     displayCarnum(draw_idx, seqnum, y);
 
+    // Stored in UTC, display in current time zone
+    time_t zoned_t = toTimeZone(times[buf_idx]);
     tft.print(" : ");
-    printNum(hour(times[buf_idx]));
+    printNum(hour(zoned_t));
     tft.print(":");
-    printNum(minute(times[buf_idx]));
+    printNum(minute(zoned_t));
 }
 
 void displayWaitingForGps() {
@@ -206,6 +240,83 @@ void displayLog() {
     // draw the log. 10 here is the number of lines to display.
     for(int i = 0; (i < 10); i++) {
         displayEntry(i);
+    }
+}
+
+void displayMenuItem(int index) {
+    int first_row_y = 52 + index*40;
+    int second_row_y = 52 + index*40 + 20;
+
+    int first_row_fg_color = 0xBDD7;
+    int second_row_fg_color = 0xBDD7;
+    int bg_color = ST77XX_BLACK;
+
+    // this is the active item
+    if (index == menu_index) {
+        if (editing_menu_item) {
+            first_row_fg_color = ST77XX_CYAN;
+            if (millis() % 1000 < 500) {
+                second_row_fg_color = ST77XX_CYAN;
+            } else {
+                second_row_fg_color = 0xBDD7;
+            }
+        } else {
+            first_row_fg_color = ST77XX_WHITE;
+            second_row_fg_color = ST77XX_WHITE;
+        }
+        
+        bg_color = 0x4208;
+    }
+
+    tft.setTextSize(2);
+    tft.setTextColor(first_row_fg_color, bg_color);
+    tft.setCursor(0, first_row_y);
+    switch(index) {
+        case 0:
+            tft.print("time zone");
+            break;
+        case 1:
+            tft.print("exit menu");
+            break;
+        default: break;
+    }
+
+    tft.setTextColor(second_row_fg_color, bg_color);
+    tft.setCursor(0, second_row_y);
+
+    int pretty_minutes = timezone%100;
+    if (pretty_minutes < 0) {
+            pretty_minutes *= -1;
+    }
+
+    switch(index) {
+        case 0: 
+            tft.print("UTC");
+            tft.printf("%+03d:%02d", timezone/100, pretty_minutes);
+            break;
+        default: break;
+    }
+}
+
+void displayMenu() {
+    tft.drawLine(0, 28, 135, 28, ST77XX_WHITE);
+    for (int i = 0; i <= MENU_ITEM_COUNT; i++) {
+        displayMenuItem(i);
+    }
+}
+
+void incrementMenuItem(int dir) {
+    switch(menu_index) {
+        case 0: // time zone
+            if (dir < 0 && time_zone_index > 0) {
+                time_zone_index--;
+                timezone = timezones[time_zone_index];
+            } else if (dir > 0 && time_zone_index < TIME_ZONE_COUNT - 1) {
+                time_zone_index++;
+                timezone = timezones[time_zone_index];
+            }
+        case 1: break; // can't scroll the exit button
+        default: break;
     }
 }
 
@@ -256,9 +367,13 @@ void setup(void) {
     encoder.enableLongPress(1500);
     encoder.begin(false);
     
+    InternalFS.begin();
 
     pinMode(GPS_PPS_PIN, INPUT_PULLDOWN);
     attachInterrupt(digitalPinToInterrupt(GPS_PPS_PIN), onGpsPPS, RISING);
+
+    pinMode(MENU_BUTTON_PIN, INPUT);
+    last_menu_off = millis();
 
     displayTime();
     displayWaitingForGps();
@@ -266,13 +381,24 @@ void setup(void) {
 
 long gps_lastbit = 0;
 long gps_lastframe = 0;
+long last_gps_second = -1; // tracks the second we're seeing in serial messages from GPS
 
 void loop() {
-    bool proc_next_redraw = false;
+    bool proc_time_redraw = false;
+    bool proc_next_car_redraw = false;
     bool proc_log_redraw = false;
     bool proc_log_clear = false;
+    bool proc_menu_redraw = false;
+    bool proc_menu_item_redraw = false;
 
     long t = millis();
+
+    // update the last menu button time immediately
+    if (digitalRead(MENU_BUTTON_PIN)) {
+        last_menu_off = t;
+        just_toggled_menu_state = false;
+    }
+
     while(Serial2.available() > 0) {
         int buf = Serial2.read();
         if(gps.encode(buf)) {
@@ -294,25 +420,24 @@ void loop() {
 
         int real_secs = (next_second) ? serial_secs + 1 : serial_secs;
 
+        proc_time_redraw = (real_secs != lastsec);
+
         if (!time_sync_good || (proc_time_sync && real_secs == 30)) {
             // either we haven't initted our time
             // or this is the first loop of the 30th second of the minute
 
-            int zoned_hour = gps.time.hour() - 7;
-            if (zoned_hour < 0) {
-                zoned_hour += 24;
-            }
-
-            setTime(zoned_hour, 
+            // set time in UTC, as it should be
+            setTime(gps.time.hour(), 
                     gps.time.minute(), 
                     real_secs, 
                     gps.date.day(), 
                     gps.date.month(), 
                     gps.date.year());
 
-            if (!time_sync_good) {
+            proc_time_redraw = true;
+            if (!time_sync_good && !in_menu) {
                 proc_log_clear = true;
-                proc_next_redraw = true;
+                proc_next_car_redraw = true;
             }
 
             time_sync_good = true;
@@ -321,32 +446,81 @@ void loop() {
         proc_time_sync = false;
     }
 
-    encoder.update();
+    // now the IO stuff
 
+    // menu button - long press to enter, short press to exit
+    if (!in_menu && !just_toggled_menu_state && (t - last_menu_off > 1500)) {
+        in_menu = true;
+        editing_menu_item = false;
+        editing_carnum = false;
+        menu_index = 0;
+        proc_log_clear = true;
+        proc_menu_redraw = true;
+        just_toggled_menu_state = true;
+    } else if (in_menu && !just_toggled_menu_state && (t - last_menu_off > 50)) {
+        in_menu = false;
+        editing_menu_item = false;
+        proc_log_clear = true;
+        just_toggled_menu_state = true;
+        proc_next_car_redraw = true;
+        proc_log_redraw = true;
+    }
+
+    encoder.update();
     int delta = encoder.read();
 
-    if (delta > 0 && time_sync_good) {
+    if (delta > 0) {
         if (editing_carnum) {
             nextcar++;
-            proc_next_redraw = true;
+            proc_next_car_redraw = true;
+        }else if (in_menu) {
+            if (editing_menu_item) {
+                incrementMenuItem(1);
+                proc_menu_item_redraw = true;
+            } else if (menu_index < MENU_ITEM_COUNT) {
+                menu_index++;
+                proc_menu_redraw = true;
+            }
         } else if (scroll_offset > 0) {
             scroll_offset--;
             proc_log_redraw = true;
         }
     }
 
-    if (delta < 0 && time_sync_good) {
+    if (delta < 0) {
         if (editing_carnum && nextcar > -3) {
             nextcar--;
-            proc_next_redraw = true;
-        } else if (scroll_offset < logged-5) {
-            scroll_offset++;
-            proc_log_redraw = true;
+            proc_next_car_redraw = true;
+        } else if (in_menu) {
+            if (editing_menu_item) {
+                incrementMenuItem(-1);
+                proc_menu_item_redraw = true;
+            } else if (menu_index > 0) {
+                menu_index--;
+                proc_menu_redraw = true;
+            }
+        }else if (scroll_offset < logged-5) {
+        scroll_offset++;
+        proc_log_redraw = true;
         }
     }
 
-    if (encoder.click() && time_sync_good) {
-        if (!editing_carnum) {
+    if (encoder.click() ) {
+        if (in_menu) {
+            if (menu_index == MENU_ITEM_COUNT) {
+                // quit is always the last option
+                in_menu = false;
+                proc_log_clear = true;
+                proc_next_car_redraw = true;
+                proc_log_redraw = true;
+            } else {
+                editing_menu_item = !editing_menu_item;
+                proc_menu_redraw = true;
+            }
+        } else if (editing_carnum) {
+            editing_carnum = false;
+            proc_next_car_redraw = true;
+        } else if (time_sync_good) {
             long t = now();
             int index = logged % BUF_SIZE;
             cars[index] = nextcar;
@@ -354,36 +528,51 @@ void loop() {
             logged++;
             nextcar++;
             scroll_offset = 0;
-            proc_next_redraw = true;
+            proc_next_car_redraw = true;
             proc_log_redraw = true;
-        } else {
-            editing_carnum = false;
-            proc_next_redraw = true;
         }
     }
 
-    if (encoder.longPress() && time_sync_good) {
+    if (encoder.longPress() && !in_menu && time_sync_good) {
         editing_carnum = !editing_carnum;
-        proc_next_redraw = true;
+        proc_next_car_redraw = true;
     }
 
-    // displayTime does its own deduplication, no need to switch it
-    displayTime();
+    if(proc_time_redraw) {
+        displayTime();
+    }
+
+    // blinky
+    if(millis() % 500 < 20) {
+        if(!in_menu && editing_carnum) {
+            proc_next_car_redraw = true;
+        } else if (in_menu && editing_menu_item) {
+            proc_menu_item_redraw = true;
+        }
+    }
 
     if (proc_log_clear) {
         clearLog();
     }
 
-    if (proc_next_redraw) {
-        displayNextCar();
+    if (time_sync_good) {
+        if (proc_next_car_redraw) {
+            displayNextCar();
+        }
+
+        if (proc_log_redraw) {
+            displayLog();
+        } 
+    } else if (proc_next_car_redraw || proc_log_redraw) {
+        displayWaitingForGps();
     }
 
-    if (proc_log_redraw) {
-        displayLog();
+    if (proc_menu_redraw) {
+        displayMenu();
     }
 
-    if(editing_carnum && millis() % 500 < 20) {
-        displayCarnum(-1, nextcar, 32);
+    if (proc_menu_item_redraw) {
+        displayMenuItem(menu_index);
     }
 
     delay(10);

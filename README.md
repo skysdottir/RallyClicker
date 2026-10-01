@@ -49,16 +49,16 @@ Once GPS time is synced, the clock will update to real time (currently hard-code
 
 RallyClicker is a PlatformIO project, developed in VS Code. That'll be by far the easiest way to build, run, and flash the project.
 
-In traditional arduino fashion, everything is mashed into main.cpp, with RotaryEncoder .cpp and .h hanging out (instead of properly imported) because I needed to fix a bug.
+In traditional arduino fashion, everything is mashed into main.cpp.
 
-SPI TFTs are slow and drawing blocks encoder I/O: minimizing redraws is important.
+SPI TFTs are slow and drawing to the screen blocks encoder I/O: minimizing redraws is important.
 
 ## Acknowledgements
 
 This project would not exist without the open source community
 
-Graphics and neopixel libraries from Adafruit
+Graphics, filesystem, and neopixel libraries from Adafruit
 Radio library (unused but needed for board) by Jan Gromeš
 TinyGPSPlus library by Mikal Hart
-Rotary encoder lib borrowed from Paul Thomsen 
+AdvancedRotaryEncoder lib by Paul Thomsen 
 Time library by Paul Stoffregen
