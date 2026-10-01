@@ -332,7 +332,7 @@ void displayBattery() {
         battery_color = ST77XX_YELLOW;
     }
 
-    int battery_start_y = (battery_percent * 20) / 100;
+    int battery_start_y = 20 - (battery_percent * 20) / 100;
 
     tft.fillRect(128, 0, 6, battery_start_y, ST77XX_BLACK);
     tft.fillRect(128, battery_start_y, 6, 24-battery_start_y, battery_color);
@@ -483,7 +483,7 @@ void loop() {
     if(checking_battery) {
         int batt_raw = analogRead(BATTERY_ADC_PIN);
         double batt_volts = (batt_raw * BATTERY_TOTAL_RESIST * 3.3) / (BATTERY_LOWER_RESIST * 1024);
-        battery_percent = (int) ((batt_volts - 3.5) * 100 / 0.7);
+        battery_percent = (int) ((batt_volts - 3.3) * 100 / 0.7);
         if (battery_percent < 0) {
             battery_percent = 0;
         }
@@ -496,6 +496,7 @@ void loop() {
         checking_battery = false;
     }
 
+    // battery check once a minute
     if(proc_time_sync && second() == 10) {
         digitalWrite(BATTERY_ADC_ACTIVATE_PIN, 1);
         checking_battery = true;
