@@ -5,13 +5,13 @@
 
 ## User Guide
 
-The clicker display has two sections: a real-time clock at the top and a log of button clicks below.
+The clicker display has two sections: a gps-synced real-time clock at the top and a log of button clicks below.
 
 As is traditional with rally, the number seqence starts with the advance car, then 000, 00, and 0 before reaching sequence number 1. The teal number at the top of the log is the *next* sequence number, clicking will commit it and the current time to the log
 
 When the clicker starts, the clock will be all red Xes and the knob will do nothing- this is normal while waiting for GPS.
 
-Once GPS time is synced, the clock will update to real time (currently hard-coded to UTC-7 time zone, that's a todo), and the knob will begin to function:
+Once GPS time is synced, the clock will update to real time (in the configured time zone), and the knob will begin to function:
 
 **Clicking the knob** will record an entry to the log
 
