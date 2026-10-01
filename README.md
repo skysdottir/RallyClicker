@@ -3,7 +3,22 @@
 
 ![A little device with a knob and screen. The screen displays time and log entries](hardware/clicker.jpg)
 
----
+## User Guide
+
+The clicker display has two sections: a real-time clock at the top and a log of button clicks below.
+
+As is traditional with rally, the number seqence starts with the advance car, then 000, 00, and 0 before reaching sequence number 1. The teal number at the top of the log is the *next* sequence number, clicking will commit it and the current time to the log
+
+When the clicker starts, the clock will be all red Xes and the knob will do nothing- this is normal while waiting for GPS.
+
+Once GPS time is synced, the clock will update to real time (currently hard-coded to UTC-7 time zone, that's a todo), and the knob will begin to function:
+
+**Clicking the knob** will record an entry to the log
+**Twisting the knob** will scroll up or down the log. Clicking while scrolled down will still record to the top of the log, and scroll back up to the top - no need to worry about messing up the order
+**Long-pressing the knob** will enter number-selection mode. The blue *next* number will blink
+**While in number-selection-mode** twisting the knob will adjust the *next* number. Clicking or long-pressing the knob will return to log mode but not log an entry.
+
+*Note that this library currently only stores the log in memory - turning it off and then on again wil loose the current log!*
 
 ## Hardware needed
 - Heltec T114
@@ -29,8 +44,6 @@
 - **V3.3** Rotary encoder + pin
   - Might also work from Ve3.3, but haven't tried
 - **G** Rotary encoder ground pin
-
----
 
 ## Software process
 
