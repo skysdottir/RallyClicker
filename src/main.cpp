@@ -79,14 +79,6 @@ int menu_index = 0;
 int cars[BUF_SIZE];
 long times[BUF_SIZE];
 
-
-void printNum(int num) {
-    if (num < 10) {
-        tft.print('0');
-    }
-    tft.print(num);
-}
-
 int lasthr = -1;
 int lastmin = -1;
 int lastsec = -1;
@@ -119,22 +111,20 @@ void displayTime() {
         tft.setTextColor(ST77XX_WHITE, ST77XX_BLACK);
 
         if (lasthr != t_hour) {
-            printNum(t_hour);
+            tft.printf("%02d", t_hour);
             lasthr = t_hour;
         }
 
         if (lastmin != t_minute) {
             tft.setCursor(33, 0);
-            tft.print(":");
-            printNum(t_minute);
+            tft.printf(":%02d", t_minute);
             lastmin = t_minute;
         }
 
         if (lastsec != t_second) {
             tft.setTextSize(2);
             tft.setCursor(88, 6);
-            tft.print(":");
-            printNum(t_second);
+            tft.printf(":%02d", t_second);
             lastsec = t_second;
         }
         
@@ -203,10 +193,12 @@ void displayEntry(int draw_idx) {
 
     // Stored in UTC, display in current time zone
     time_t zoned_t = toTimeZone(times[buf_idx]);
-    tft.print(" : ");
-    printNum(hour(zoned_t));
-    tft.print(":");
-    printNum(minute(zoned_t));
+
+    if (seqnum > 999) {
+        tft.printf(": %02d:%02d", hour(zoned_t), minute(zoned_t));
+    } else {
+        tft.printf(" : %02d:%02d", hour(zoned_t), minute(zoned_t));
+    }
 }
 
 void displayWaitingForGps() {
