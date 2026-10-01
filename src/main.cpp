@@ -38,6 +38,12 @@
 /* GPS */
 #define GPSBAUD 9600
 
+/* Battery status */
+#define BATTERY_ADC_ACTIVATE_PIN 6
+#define BATTERY_ADC_PIN 4
+#define BATTERY_TOTAL_RESIST 490.0
+#define BATTERY_LOWER_RESIST 100.0
+
 /* File system */
 #define CONFIG_FILE_NAME "/rallyclickconfig.txt"
 #define LOG_FILE_NAME "/rallyclicklog.txt"
@@ -66,10 +72,13 @@ bool in_menu = false;
 bool editing_menu_item = false;
 bool just_toggled_menu_state = true;
 bool config_changed = false;
+bool checking_battery = false;
 
 int nextcar = -3; // -3: ADV  -2: 000  -1: 00
 int logged = 0;
 int scroll_offset = 0;
+
+int battery_percent = 0;
 
 // Menu button debounce
 long last_menu_off = 0;
@@ -315,6 +324,20 @@ void incrementMenuItem(int dir) {
     }
 }
 
+void displayBattery() {
+    int battery_color = ST77XX_GREEN;
+    if (battery_percent < 20) {
+        battery_color = ST77XX_RED;
+    } else if (battery_percent < 40) {
+        battery_color = ST77XX_YELLOW;
+    }
+
+    int battery_start_y = (battery_percent * 20) / 100;
+
+    tft.fillRect(128, 0, 6, battery_start_y, ST77XX_BLACK);
+    tft.fillRect(128, battery_start_y, 6, 24-battery_start_y, battery_color);
+}
+
 void parseConfigFile() {
     Adafruit_LittleFS_Namespace::File cfg(InternalFS);
     char cfg_buf[1024];
@@ -419,6 +442,11 @@ void setup(void) {
     pinMode(MENU_BUTTON_PIN, INPUT);
     last_menu_off = millis();
 
+    pinMode(BATTERY_ADC_ACTIVATE_PIN, OUTPUT);
+    digitalWrite(BATTERY_ADC_ACTIVATE_PIN, 1);
+    checking_battery = true;
+    pinMode(BATTERY_ADC_PIN, INPUT);
+
     displayTime();
     displayWaitingForGps();
 }
@@ -434,6 +462,7 @@ void loop() {
     bool proc_log_clear = false;
     bool proc_menu_redraw = false;
     bool proc_menu_item_redraw = false;
+    bool proc_battery_gauge_redraw = false;
 
     long t = millis();
 
@@ -449,6 +478,28 @@ void loop() {
             gps_lastframe = t;
         }
         gps_lastbit = t;
+    }
+
+    if(checking_battery) {
+        int batt_raw = analogRead(BATTERY_ADC_PIN);
+        double batt_volts = (batt_raw * BATTERY_TOTAL_RESIST * 3.3) / (BATTERY_LOWER_RESIST * 1024);
+        battery_percent = (int) ((batt_volts - 3.5) * 100 / 0.7);
+        if (battery_percent < 0) {
+            battery_percent = 0;
+        }
+        if (battery_percent > 100) {
+            battery_percent = 100;
+        }
+
+        proc_battery_gauge_redraw = true;
+        digitalWrite(BATTERY_ADC_ACTIVATE_PIN, 0);
+        checking_battery = false;
+    }
+
+    if(proc_time_sync && second() == 10) {
+        digitalWrite(BATTERY_ADC_ACTIVATE_PIN, 1);
+        checking_battery = true;
+        // and then we wait for the next loop to check the adc
     }
 
     if (gps.time.isValid() && (gps.date.year() > 2020)) {
@@ -619,6 +670,10 @@ void loop() {
 
     if (proc_menu_item_redraw) {
         displayMenuItem(menu_index);
+    }
+
+    if (proc_battery_gauge_redraw) {
+        displayBattery();
     }
 
     delay(10);
