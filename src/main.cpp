@@ -5,6 +5,7 @@
 #include <Arduino.h>
 #include <TinyGPSPlus.h>
 #include <TimeLib.h>
+#include <Regexp.h>
 #include <RotaryEncoder.h>
 
 /* ADC */
@@ -38,8 +39,8 @@
 #define GPSBAUD 9600
 
 /* File system */
-#define CONFIG_FILE_NAME "/rallyclick/config.txt"
-#define LOG_FILE_NAME "/rallyclick/log.txt"
+#define CONFIG_FILE_NAME "/rallyclickconfig.txt"
+#define LOG_FILE_NAME "/rallyclicklog.txt"
 
 /* Magic numbers */
 #define BUF_SIZE 1024 // An event is never going to have more than 1024 cars, right?
@@ -320,6 +321,52 @@ void incrementMenuItem(int dir) {
     }
 }
 
+void parseConfigFile() {
+    Adafruit_LittleFS_Namespace::File cfg(InternalFS);
+    char cfg_buf[1024];
+
+    if(InternalFS.exists(CONFIG_FILE_NAME)) {
+        cfg.open(CONFIG_FILE_NAME, Adafruit_LittleFS_Namespace::FILE_O_READ);
+        if (cfg) {
+            while(cfg.available()) {
+                String config_line = cfg.readStringUntil('\n');
+                config_line.toCharArray(cfg_buf, 1024);
+                MatchState match(cfg_buf);
+
+                char result = match.Match("^timezone_index=(%d+)$");
+
+                if(result == REGEXP_MATCHED) {
+                    char cfg_timezone_index_str[4];
+                    match.GetCapture(cfg_timezone_index_str, 0);
+                    int cfg_timezone_index = atoi(cfg_timezone_index_str);
+
+                    if(cfg_timezone_index >= 0 && cfg_timezone_index < TIME_ZONE_COUNT) {
+                        time_zone_index = cfg_timezone_index;
+                        timezone = timezones[time_zone_index];
+                    }
+                }
+            }
+            cfg.close();
+        }
+    }
+}
+
+void saveConfig() {
+    Adafruit_LittleFS_Namespace::File cfg(InternalFS);
+
+    if (InternalFS.exists(CONFIG_FILE_NAME)) {
+        InternalFS.remove(CONFIG_FILE_NAME);
+    }
+
+    cfg.open(CONFIG_FILE_NAME, Adafruit_LittleFS_Namespace::FILE_O_WRITE);
+
+    if(cfg) {
+        cfg.printf("timezone_index=%d\n", time_zone_index);
+    }
+
+    cfg.close();
+}
+
 void onGpsPPS() {
     proc_time_sync = true;
     next_second = true;
@@ -368,6 +415,7 @@ void setup(void) {
     encoder.begin(false);
     
     InternalFS.begin();
+    parseConfigFile();
 
     pinMode(GPS_PPS_PIN, INPUT_PULLDOWN);
     attachInterrupt(digitalPinToInterrupt(GPS_PPS_PIN), onGpsPPS, RISING);
@@ -458,6 +506,7 @@ void loop() {
         proc_menu_redraw = true;
         just_toggled_menu_state = true;
     } else if (in_menu && !just_toggled_menu_state && (t - last_menu_off > 50)) {
+        saveConfig();
         in_menu = false;
         editing_menu_item = false;
         proc_log_clear = true;
@@ -509,6 +558,7 @@ void loop() {
         if (in_menu) {
             if (menu_index == MENU_ITEM_COUNT) {
                 // quit is always the last option
+                saveConfig();
                 in_menu = false;
                 proc_log_clear = true;
                 proc_next_car_redraw = true;

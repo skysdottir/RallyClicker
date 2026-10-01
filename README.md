@@ -71,3 +71,4 @@ Radio library (unused but needed for board) by Jan Gromeš
 TinyGPSPlus library by Mikal Hart
 AdvancedRotaryEncoder lib by Paul Thomsen 
 Time library by Paul Stoffregen
+Regexp library by Nick Gammon
