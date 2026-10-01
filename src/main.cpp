@@ -65,6 +65,7 @@ bool editing_carnum = false;
 bool in_menu = false;
 bool editing_menu_item = false;
 bool just_toggled_menu_state = true;
+bool config_changed = false;
 
 int nextcar = -3; // -3: ADV  -2: 000  -1: 00
 int logged = 0;
@@ -308,6 +309,7 @@ void incrementMenuItem(int dir) {
                 time_zone_index++;
                 timezone = timezones[time_zone_index];
             }
+            config_changed = true;
         case 1: break; // can't scroll the exit button
         default: break;
     }
@@ -344,19 +346,21 @@ void parseConfigFile() {
 }
 
 void saveConfig() {
-    Adafruit_LittleFS_Namespace::File cfg(InternalFS);
+    if (config_changed) {
+        Adafruit_LittleFS_Namespace::File cfg(InternalFS);
 
-    if (InternalFS.exists(CONFIG_FILE_NAME)) {
-        InternalFS.remove(CONFIG_FILE_NAME);
+        if (InternalFS.exists(CONFIG_FILE_NAME)) {
+            InternalFS.remove(CONFIG_FILE_NAME);
+        }
+
+        cfg.open(CONFIG_FILE_NAME, Adafruit_LittleFS_Namespace::FILE_O_WRITE);
+
+        if(cfg) {
+            cfg.printf("timezone_index=%d\n", time_zone_index);
+        }
+
+        cfg.close();
     }
-
-    cfg.open(CONFIG_FILE_NAME, Adafruit_LittleFS_Namespace::FILE_O_WRITE);
-
-    if(cfg) {
-        cfg.printf("timezone_index=%d\n", time_zone_index);
-    }
-
-    cfg.close();
 }
 
 void onGpsPPS() {
