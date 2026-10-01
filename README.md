@@ -5,7 +5,7 @@
 
 ## User Guide
 
-The clicker display has two sections: a real-time clock at the top and a log of button clicks below.
+The clicker display has two sections: a gps-synced real-time clock at the top and a log of button clicks below.
 
 As is traditional with rally, the number seqence starts with the advance car, then 000, 00, and 0 before reaching sequence number 1. The teal number at the top of the log is the *next* sequence number, clicking will commit it and the current time to the log
 
